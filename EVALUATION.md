@@ -68,7 +68,7 @@ To successfully build VaultWire while addressing the critical feasibility flaw, 
 *   **Tasks:**
     *   [ ] Implement the boot sequence: Wait for user to input the master password via the dedicated Pi keyboard, load the `.kdbx` file into `pykeepass` residing in `tmpfs`, and securely wipe the master password from variables.
     *   [ ] Create the HID mapping engine: Translate standard ASCII characters into raw USB HID keycode bytes to be written to `/dev/hidg0`. Include a configurable jitter/delay to prevent dropped keystrokes.
-    *   [ ] Build the Input Listener loop: Read physical keyboard inputs. When an `ID` command is entered, fetch the corresponding password from the `pykeepass` object, wait 3 seconds, and inject.
+    *   [ ] Build the Input Listener loop: Read physical keyboard inputs. When an `ID` command is entered, implement a two-stage injection flow: First, inject the target URL and an 'Enter' keystroke. Then, enter a blocking wait state. Once the user hits 'Enter' again on the Pi keyboard, inject the login sequence (Username -> Tab -> Password -> Enter).
     *   [ ] Implement the Sync Exporter: Read all entries, strip passwords, compile to JSON, compress via LZMA, encode to Base64, and send via the HID injection engine.
 
 ### Phase 5: End-to-End Testing & Security Audit
