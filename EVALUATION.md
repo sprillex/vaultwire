@@ -17,15 +17,10 @@
     *   *Recommendation:* Enforce Python Virtual Environments (`venv`) for both the Host and Pi development. Use `requirements.txt` or `pyproject.toml` to manage dependencies.
 *   **Language & Framework Choices:**
     *   Using Python with `curses` for the host app is functional but slightly dated. It works well for a terminal aesthetic, though.
-    *   The `xclip` dependency explicitly ties the companion app to X11 display servers. This will fail on modern Linux distributions running Wayland (like modern Ubuntu, Fedora, or even customized Mint setups).
-    *   *Recommendation:* Abstract the clipboard logic. Use a cross-platform library like `pyperclip` or conditionally support both `xclip` and `wl-clipboard`.
+    *   The companion app utilizes Python with `curses` which is functional and fits the terminal aesthetic well.
 *   **Modularity:** The scripts provided (e.g., `vault_manager.py`) are monolithic. Configuration parsing, UI logic, and data handling should be separated into distinct modules to allow for easier testing and maintenance.
 
 ### 3. Practical Applications & Feasibility
-*   **CRITICAL FLAW - The Unidirectional USB Barrier:** The README states: *"Because a standard USB keyboard cannot receive data back from a computer... the Pi sends a fast `Ctrl + C` macro to read the clipboard state"*.
-    *   **Feasibility Issue:** This is physically and architecturally impossible. Standard USB HID (Human Interface Device) operates strictly one-way for keystrokes. Sending `Ctrl + C` tells the *host OS* to copy text to the *host's clipboard*. The keyboard (Pi) has no mechanism to read the host's RAM or clipboard state via standard HID protocol.
-    *   **Mitigation (Option A - Maintain Air-Gap):** Drop the clipboard concept. Instead, the companion app simply displays the `ID` (e.g., `42`). The user manually types `42` into their physical Pi keyboard, and the Pi injects the corresponding password.
-    *   **Mitigation (Option B - USB Composite Device):** Configure the Pi's USB OTG to present as a **Composite Device** (both an HID Keyboard *and* a Virtual Serial Port). The host python app writes the requested `ID` to the serial port (`/dev/ttyACM0`), the Pi reads it, and then types the password via HID. This breaks the "strict one-way" rule but fully automates the process safely without network access.
 *   **Typing Speed Limitations:** Blasting keystrokes via USB HID can lead to dropped characters depending on the host's USB polling rate and OS load.
     *   *Recommendation:* The Pi's payload injection script must include micro-delays (e.g., 5-10ms) between simulated keystrokes.
 
@@ -33,7 +28,7 @@
 
 ## Part 2: Step-by-Step Implementation Blueprint
 
-To successfully build VaultWire while addressing the critical feasibility flaw, we will proceed with **Mitigation Option A (Manual ID Entry)** to maintain the absolute strictest one-way hardware air-gap.
+To successfully build VaultWire, we will use a manual ID entry flow to maintain the absolute strictest one-way hardware air-gap. The host app simply displays the target ID, and the user enters it on the Pi keyboard.
 
 ### Phase 1: Environment & Foundational Architecture
 **Objective:** Set up robust, isolated development environments and abstract platform-specific dependencies.
@@ -42,14 +37,13 @@ To successfully build VaultWire while addressing the critical feasibility flaw, 
     *   [ ] Initialize a standard project structure with `host/` and `pi/` directories.
     *   [ ] Create `requirements.txt` for both Host and Pi.
     *   [ ] Set up Python `venv` activation scripts for local development.
-    *   [ ] Replace `xclip` dependency in the host code with `pyperclip` to ensure compatibility across X11, Wayland, and macOS/Windows if ported later.
-    *   [ ] Refactor the architecture design document to remove the "clipboard reading" mechanism and replace it with "Manual Pi Prompting."
+    *   [ ] Ensure the architecture design document accurately reflects "Manual Pi Prompting."
 
 ### Phase 2: Host Companion App Refactoring
-**Objective:** Update the host CLI to align with the new, physically feasible air-gapped workflow.
+**Objective:** Update the host CLI to maintain a clean text UI that clearly displays the Target ID for manual entry.
 *   **Prerequisites:** Python `curses`, modified `mint_vault_manager.py`.
 *   **Tasks:**
-    *   [ ] Update the UI text in `mint_vault_manager.py` to instruct the user to type the staged `ID` directly into the Pi's dedicated keyboard, rather than staging it to the clipboard.
+    *   [ ] Ensure the UI text in `mint_vault_manager.py` clearly instructs the user to type the selected `ID` directly into the Pi's dedicated keyboard.
     *   [ ] Implement a robust error-handling wrapper around the Sync Mode input stream to handle corrupted or interrupted base64/LZMA transmissions.
     *   [ ] Modularize the `vault_manager.py` into distinct files: `ui.py` (curses), `storage.py` (JSON handling), and `sync.py` (decoder).
 

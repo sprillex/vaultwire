@@ -29,14 +29,6 @@ def save_local_data(data):
     except Exception:
         return False
 
-def copy_to_clipboard(text):
-    """Copies data to the Linux Mint system clipboard via xclip."""
-    try:
-        process = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE, close_fds=True)
-        process.communicate(input=text.encode('utf-8'))
-    except FileNotFoundError:
-        pass
-
 def sync_mode(stdscr):
     """Special mode to ingest new database structure via compressed strings."""
     curses.echo() # Show characters as they are typed/streamed
@@ -96,8 +88,8 @@ def draw_main_menu(stdscr):
         stdscr.attroff(curses.color_pair(2) | curses.A_BOLD)
         
         stdscr.addstr(3, 2, "👉 HOW TO USE:")
-        stdscr.addstr(4, 4, "• Select service -> Press [ENTER] to stage the target index identifier.")
-        stdscr.addstr(5, 4, "• Use the Pi's Bluetooth keyboard to confirm injection on the target app.")
+        stdscr.addstr(4, 4, "• Browse to find the service ID you want to log into.")
+        stdscr.addstr(5, 4, "• Manually type the ID into the Pi's Bluetooth keyboard to trigger injection.")
         stdscr.addstr(6, 4, "• Press [S] to enter Sync Mode and import current service metadata from the Pi.")
         stdscr.addstr(7, 4, "• Press [Q] to quit safely.")
         stdscr.addstr(8, 2, "-" * (width - 4))
@@ -147,22 +139,13 @@ def draw_main_menu(stdscr):
             curses.noecho()
             curses.curs_set(0)
         elif key in [10, 13, curses.KEY_ENTER] and vault_data:
-            # Echo Key execution step
+            # Display target ID clearly for manual entry
             selected = vault_data[current_row]
-            index_tag = f"ID:{selected['id']}"
-            copy_to_clipboard(index_tag)
-            status_message = f"Staged '{index_tag}' to clipboard. Fire the target injection sequence via the Pi!"
+            status_message = f"Selected ID is '{selected['id']}'. Type this on the Pi keyboard to inject!"
         elif key in [ord('q'), ord('Q'), 27]:
             break
 
 def main():
-    # Enforce standard xclip requirements on execution launch
-    try:
-        subprocess.run(['xclip', '-version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except FileNotFoundError:
-        print("Missing dependency: Please run 'sudo apt install xclip' before running this utility.")
-        sys.exit(1)
-        
     curses.wrapper(draw_main_menu)
     print("\n[+] Companion app suspended cleanly. Storage state un-altered.")
 
