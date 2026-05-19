@@ -21,6 +21,10 @@
     *   *Mitigation:* Expose only a pre-allocated, flat image file (e.g., `vault.img`) rather than the actual OS partition.
 *   **Kernel-Level Execution Blocks:** Malware dropped into the `.kdbx` storage folder could be executed by the Python daemon.
     *   *Mitigation:* Mount the `vault.img` container internally using strict Linux kernel flags: `ro,noexec,nosuid,nodev`.
+*   **Physical Tampering (Evil Maid Attack):** An attacker with brief physical access could pull the SD card and replace the OS with a malicious image designed to silently log the master password or exfiltrate the `.kdbx` file over a hidden wireless interface.
+    *   *Mitigation:* Utilize physical tamper-evident seals on the Pi's enclosure. Additionally, implement an encrypted root filesystem (LUKS) to protect the underlying OS integrity against offline modifications.
+*   **Parser Vulnerabilities:** As `pykeepass` processes external files, it is theoretically vulnerable to memory exhaustion or logic flaws if a maliciously crafted `.kdbx` file is intentionally uploaded during Sync Mode.
+    *   *Mitigation:* Ensure `pykeepass` is strictly version-pinned and regularly audited. Include a security step to perform fuzzing on the vault parsing logic.
 
 ### 2. Best Practices
 *   **Dependency Management & Environments:** Relying on global system packages (`sudo apt install`) and global Python installations (`pip3 install`) can lead to dependency hell or conflicts.
@@ -29,6 +33,10 @@
     *   *Recommendation:* Create a dedicated unprivileged `vault_daemon` user. Use `udev` rules to grant this user write access strictly to `/dev/hidg0`.
 *   **Modular Architecture & Plugin Pattern:** The parser (`pykeepass`) and user interface logic are deeply coupled in the existing plan.
     *   *Recommendation:* Abstract the vault parsing logic into a modular plugin interface. This allows future expansion (e.g., parsing Bitwarden exports) without rewriting the core HID engine. Similarly, modularize the host app into distinct files for UI, storage, and sync logic.
+*   **State Feedback (Blind Operations):** Currently, entering the Master Password or Target IDs via the dedicated keyboard is completely "blind." If a user makes a typo or the system hangs, there is zero feedback.
+    *   *Recommendation:* Elevate the addition of a physical screen (e.g., a simple OLED) from a "Stretch Goal" to a core requirement. Providing essential state feedback (e.g., "Locked", "Ready", "Error") drastically improves usability.
+*   **Vault Backup Strategy:** The architecture focuses on reading and updating the vault, but does not explicitly define a backup strategy. SD cards have high failure rates.
+    *   *Recommendation:* Define a secure backup procedure utilizing the Sync Mode Mass Storage container, allowing users to easily and safely copy the encrypted `.kdbx` file back to the host system for archiving.
 
 ### 3. Practical Applications & Feasibility
 *   **Typing Speed Limitations:** Blasting keystrokes via USB HID can lead to dropped characters due to host OS load or USB polling rates.
@@ -66,15 +74,17 @@
 *   **Prerequisites:** Raspberry Pi Zero 2 W, DietPi OS, physical GPIO slide switch, Micro-USB data cable.
 *   **Checklist:**
     *   [ ] Disable all network interfaces (Wi-Fi, Ethernet overlays, Bluetooth stack).
+    *   [ ] Configure Full Disk Encryption (LUKS) to protect the underlying OS against physical tampering (Evil Maid attacks).
     *   [ ] Wire the physical slide switch to a GPIO pin and implement the boot-time check script (`check_mode.sh`).
     *   [ ] Configure Mode A (Vault): Initialize as HID Keyboard (`/dev/hidg0`). Mount the `vault.img` container with `ro,noexec,nosuid,nodev`. Set up `udev` rules for the unprivileged `vault_daemon` user.
-    *   [ ] Configure Mode B (Sync): Boot into read-write and expose `vault.img` via `libcomposite` as a USB Mass Storage device.
+    *   [ ] Configure Mode B (Sync): Boot into read-write and expose `vault.img` via `libcomposite` as a USB Mass Storage device. Document the procedure for users to back up their `.kdbx` file during this mode.
     *   [ ] Set up a `tmpfs` (RAM disk) mount and explicitly disable all OS swap space.
 
 ### Phase 4: Core Vault Daemon (Pi-Side)
-**Objective:** Develop the core Python engine on the Pi for vault decryption, input listening, and secure HID injection.
-*   **Prerequisites:** `pykeepass`, knowledge of Linux HID keycodes, dedicated physical keyboard.
+**Objective:** Develop the core Python engine on the Pi for vault decryption, input listening, secure HID injection, and state feedback.
+*   **Prerequisites:** `pykeepass`, knowledge of Linux HID keycodes, dedicated physical keyboard, OLED SPI display.
 *   **Checklist:**
+    *   [ ] **Physical Display Integration:** Wire the OLED display to the Pi's GPIO pins to show system status (e.g., "Vault Locked", "Ready for ID", "Error") to solve the blind entry problem.
     *   [ ] Implement the boot sequence: Wait for master password via the Pi keyboard. Perform Cryptographic Header Validation (verify `0x03D9A29A` and `0x67FB4BB5`) before parsing.
     *   [ ] Build the HID mapping engine with configurable micro-delays between keystrokes to prevent dropping characters. Include Caps Lock override macros.
     *   [ ] Implement the Input Listener with Duress PIN support (loading 'The Fake Vault').
@@ -93,7 +103,6 @@
 
 ### Phase 6: Stretch Goals (Hardware Expansions)
 **Objective:** Enhance the standalone physical capabilities and user experience of the Pi hardware.
-*   **Prerequisites:** Compatible E-Ink or OLED SPI display module.
+*   **Prerequisites:** Secondary hardware modules.
 *   **Checklist:**
-    *   [ ] **Physical Display Integration:** Wire the display to the Pi's GPIO pins to show system status ("Vault Locked", "Ready for ID").
     *   [ ] **OTP Display:** Add functionality to parse TOTP tokens from the KeePass database and display them on the physical screen for manual entry.
