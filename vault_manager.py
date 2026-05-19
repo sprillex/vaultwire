@@ -4,7 +4,6 @@ import sys
 import json
 import base64
 import lzma
-import subprocess
 import curses
 
 # Set this path to a thumb drive or local folder

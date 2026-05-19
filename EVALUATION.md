@@ -61,7 +61,7 @@ To successfully build VaultWire, we will use a manual ID entry flow to maintain 
 *   **Prerequisites:** `pykeepass` library, knowledge of Linux HID keycodes.
 *   **Tasks:**
     *   [ ] Implement the boot sequence: Wait for user to input the master password via the dedicated Pi keyboard, load the `.kdbx` file into `pykeepass` residing in `tmpfs`, and securely wipe the master password from variables.
-    *   [ ] Create the HID mapping engine: Translate standard ASCII characters into raw USB HID keycode bytes to be written to `/dev/hidg0`. Include a configurable jitter/delay to prevent dropped keystrokes.
+    *   [ ] Create the HID mapping engine: Translate standard ASCII characters into raw USB HID keycode bytes to be written to `/dev/hidg0`. Include a randomized, configurable jitter/delay between keystrokes to simulate human typing and prevent dropped characters.
     *   [ ] Build the Input Listener loop: Read physical keyboard inputs. When an `ID` command is entered, implement a two-stage injection flow: First, inject the target URL and an 'Enter' keystroke. Then, enter a blocking wait state. Once the user hits 'Enter' again on the Pi keyboard, inject the login sequence (Username -> Tab -> Password -> Enter).
     *   [ ] Implement the Sync Exporter: Read all entries, strip passwords, compile to JSON, compress via LZMA, encode to Base64, and send via the HID injection engine.
 
@@ -73,3 +73,10 @@ To successfully build VaultWire, we will use a manual ID entry flow to maintain 
     *   [ ] **Injection Test:** Trigger a password injection into a local text file and verify strict accuracy against the database.
     *   [ ] **Power-Loss Test:** Pull the power cord mid-operation. Reboot and verify the read-only filesystem remains uncorrupted and no residual keys exist on the SD card.
     *   [ ] **Volatility Audit:** Run `htop` and memory analyzers on the Pi to confirm swap space is completely disabled and the KeePass vault rests solely in physical memory.
+
+### Phase 6: Stretch Goals (Hardware Expansions)
+**Objective:** Enhance the standalone capabilities of the Pi hardware.
+*   **Prerequisites:** E-Ink or OLED SPI display module compatible with the Pi Zero 2.
+*   **Tasks:**
+    *   [ ] **Physical Display:** Integrate a small physical screen directly to the Pi's GPIO pins to display system status (e.g., "Vault Locked", "Ready for ID").
+    *   [ ] **OTP Generation:** Add functionality to parse Time-Based One-Time Passwords (TOTP) from the KeePass database and display the current token on the physical screen for manual entry by the user.
