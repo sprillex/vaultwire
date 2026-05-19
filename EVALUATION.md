@@ -15,6 +15,12 @@
     *   *Mitigation:* Implement a strict 30-second hardware lockout period between successful injections. Add a "Honey-Pot Trigger": if >3 distinct ID requests occur within 30 seconds, or strictly sequential lookups are detected, immediately wipe RAM and trigger a cold reboot.
 *   **Zero Bulk-Export Vectors:** Software exploits on the Pi could attempt to loop through the KeePass database and dump all entries.
     *   *Mitigation:* The daemon code must strictly execute single, exact `.get()` queries based on an explicit input string. There must be absolutely no loop functions capable of iterating through or dumping the entire database entry list.
+*   **Physical Coercion (Duress / Panic PIN):** An attacker might physically force the user to unlock the vault. Standard digital security cannot protect against physical coercion.
+    *   *Mitigation:* Implement a secondary "Panic PIN". If entered, the Pi will either instantly overwrite the database blocks with random data (The Nuke) or seamlessly decrypt a secondary `.kdbx` file filled with dummy accounts (The Fake Vault).
+*   **Isolated Storage Container (Virtual Drive):** Mounting the raw Pi filesystem via `libcomposite` as a Mass Storage Device exposes the OS to host-based malware.
+    *   *Mitigation:* Expose only a pre-allocated, flat image file (e.g., `vault.img`) rather than the actual OS partition. This traps any dropped malware in a sandboxed file.
+*   **Kernel-Level Execution Blocks:** Malware dropped into the `.kdbx` storage folder could be executed by the Python daemon.
+    *   *Mitigation:* Mount the `vault.img` container internally using strict Linux kernel flags: `ro,noexec,nosuid,nodev`. The `noexec` flag ensures the kernel categorically refuses to execute any binary or script stored within the image.
 
 ### 2. Best Practices
 *   **Dependency Management & Environments:** The project currently relies on global system packages (`sudo apt install`) and global python installations (`pip3 install`). This can lead to dependency hell or conflicts.
@@ -61,8 +67,8 @@ To successfully build VaultWire, we will use a manual ID entry flow to maintain 
 *   **Prerequisites:** DietPi OS flashed to MicroSD, Micro-USB data cable, physical GPIO slide switch.
 *   **Tasks:**
     *   [ ] Wire a physical slide switch to a GPIO pin and create a boot-time check script (`check_mode.sh`).
-    *   [ ] **Mode A (Vault):** If the switch is in Vault Mode, run `hid_gadget.sh` to leverage `libcomposite` via ConfigFS, defining the Pi strictly as a USB HID Keyboard endpoint (`/dev/hidg0`). Ensure the OS is forced into a Read-Only state.
-    *   [ ] **Mode B (Sync):** If the switch is in Sync Mode, boot into Read-Write and mount a FAT32 partition via `libcomposite` as a USB Mass Storage device for `.kdbx` ingress.
+    *   [ ] **Mode A (Vault):** If the switch is in Vault Mode, run `hid_gadget.sh` to initialize as an HID Keyboard endpoint (`/dev/hidg0`). Internally mount the `vault.img` container using strict kernel flags (`mount -o ro,noexec,nosuid,nodev /path/to/vault.img /mnt/vault_data`) to prevent malware execution.
+    *   [ ] **Mode B (Sync):** If the switch is in Sync Mode, boot into Read-Write and expose only a pre-allocated flat image file (`vault.img`) via `libcomposite` as a USB Mass Storage device, keeping the Pi's actual root filesystem completely hidden from the host OS.
     *   [ ] Disable all network interfaces (Wi-Fi, Ethernet overlays). If using a physical GPIO keypad, disable the Bluetooth stack entirely.
     *   [ ] Set up a `tmpfs` (RAM disk) mount for the temporary extraction of the `.kdbx` file during Vault Mode operations.
 
@@ -70,10 +76,11 @@ To successfully build VaultWire, we will use a manual ID entry flow to maintain 
 **Objective:** Develop the secure python engine that runs on the Pi to handle decryption, listening, and keystroke injection.
 *   **Prerequisites:** `pykeepass` library, knowledge of Linux HID keycodes.
 *   **Tasks:**
-    *   [ ] Implement the boot sequence: Wait for user to input the master password via the dedicated Pi keyboard, load the `.kdbx` file into `pykeepass` residing in `tmpfs`, and securely wipe the master password from variables.
+    *   [ ] Implement the boot sequence: Wait for user to input the master password via the dedicated Pi keyboard. **Cryptographic Header Validation:** Before parsing, verify the `.kdbx` file begins with the exact magic bytes `0x03D9A29A` and `0x67FB4BB5` to prevent malicious payloads from crashing the parser. Load the validated file into `pykeepass` residing in `tmpfs`, and securely wipe the master password from variables.
     *   [ ] Create the HID mapping engine: Translate standard ASCII characters into raw USB HID keycode bytes to be written to `/dev/hidg0`. Include a randomized, configurable jitter/delay between keystrokes to simulate human typing and prevent dropped characters.
     *   [ ] **Caps Lock Protection:** Integrate an HID macro to explicitly force the host's Caps Lock state off (or detect its state if supported by the USB protocol layer) prior to any payload injection.
-    *   [ ] Build the Input Listener loop: Read physical keyboard inputs. When an `ID` command is entered, explicitly fetch the single entry via a strict `.get()` query. Implement a two-stage injection flow: First, inject the target URL and an 'Enter' keystroke. Then, enter a blocking wait state. Once the user hits 'Enter' again on the Pi keyboard, inject the login sequence (Username -> Tab -> Password -> Enter).
+    *   [ ] Build the Input Listener loop: Read physical keyboard inputs. **Duress PIN Support:** If the predefined Panic PIN is entered, instantly execute 'The Nuke' (overwrite the `.kdbx` file with random data and lock) or load 'The Fake Vault' (decrypt a dummy database).
+    *   [ ] Implement Injection Flow: When a standard `ID` command is entered, explicitly fetch the single entry via a strict `.get()` query. Implement a two-stage injection flow: First, inject the target URL and an 'Enter' keystroke. Then, enter a blocking wait state. Once the user hits 'Enter' again on the Pi keyboard, inject the login sequence (Username -> Tab -> Password -> Enter).
     *   [ ] Implement Rate-Limiting & Traps: Add a strict 30-second lockout between successful injections. Implement a Honey-Pot trigger that detects >3 requests in 30 seconds or sequential ID lookups (e.g., 41, 42, 43), immediately wiping RAM and forcing a reboot upon trigger.
     *   [ ] Implement the Sync Exporter: Read all entries, strip passwords, compile to JSON, compress via LZMA, encode to Base64, and send via the HID injection engine.
 
