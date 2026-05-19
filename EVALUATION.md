@@ -20,13 +20,18 @@
 *   **Dependency Management & Environments:** The project currently relies on global system packages (`sudo apt install`) and global python installations (`pip3 install`). This can lead to dependency hell or conflicts.
     *   *Recommendation:* Enforce Python Virtual Environments (`venv`) for both the Host and Pi development. Use `requirements.txt` or `pyproject.toml` to manage dependencies.
 *   **Language & Framework Choices:**
-    *   Using Python with `curses` for the host app is functional but slightly dated. It works well for a terminal aesthetic, though.
     *   The companion app utilizes Python with `curses` which is functional and fits the terminal aesthetic well.
 *   **Modularity:** The scripts provided (e.g., `vault_manager.py`) are monolithic. Configuration parsing, UI logic, and data handling should be separated into distinct modules to allow for easier testing and maintenance.
 
 ### 3. Practical Applications & Feasibility
 *   **Typing Speed Limitations:** Blasting keystrokes via USB HID can lead to dropped characters depending on the host's USB polling rate and OS load.
     *   *Recommendation:* The Pi's payload injection script must include micro-delays (e.g., 5-10ms) between simulated keystrokes.
+*   **Caps Lock Protection:** If the host PC has Caps Lock engaged when the injection occurs, the injected passwords will be case-inverted, leading to failed logins and potential account lockouts.
+    *   *Recommendation:* The Pi must be able to read the Caps Lock state from the host before injecting, or explicitly force the Caps Lock state off via a targeted HID macro sequence before sending the payload.
+*   **The Air-Gapped Update Lifecycle (Database Ingress):** Updating the password database is a massive operational bottleneck since the Pi runs a read-only filesystem with networking permanently disabled. Pulling the MicroSD card for every update will degrade the physical card slot.
+    *   *Recommendation:* Introduce a physical Hardware Maintenance Switch wired to a GPIO pin.
+        *   **Position A (Vault Mode):** Boots into a strict Read-Only filesystem and initializes USB strictly as an HID Keyboard.
+        *   **Position B (Sync/Update Mode):** Boots into a standard read-write state and configures the USB port via `libcomposite` as a Mass Storage Device. The user can drag and drop the updated `.kdbx` file directly to the partition, flip the switch back to Vault Mode, and reboot safely.
 
 ---
 
@@ -52,13 +57,14 @@ To successfully build VaultWire, we will use a manual ID entry flow to maintain 
     *   [ ] Modularize the `vault_manager.py` into distinct files: `ui.py` (curses), `storage.py` (JSON handling), and `sync.py` (decoder).
 
 ### Phase 3: Pi OS Hardening & USB Gadget Initialization
-**Objective:** Configure the Raspberry Pi Zero 2 W as a secure, headless, read-only USB HID device.
-*   **Prerequisites:** DietPi OS flashed to MicroSD, Micro-USB data cable.
+**Objective:** Configure the Raspberry Pi Zero 2 W as a secure, headless, read-only USB HID device with a hardware maintenance toggle.
+*   **Prerequisites:** DietPi OS flashed to MicroSD, Micro-USB data cable, physical GPIO slide switch.
 *   **Tasks:**
-    *   [ ] Write `hid_gadget.sh` to leverage `libcomposite` via ConfigFS, defining the Pi strictly as a USB HID Keyboard endpoint (`/dev/hidg0`). Set this script to run on boot.
+    *   [ ] Wire a physical slide switch to a GPIO pin and create a boot-time check script (`check_mode.sh`).
+    *   [ ] **Mode A (Vault):** If the switch is in Vault Mode, run `hid_gadget.sh` to leverage `libcomposite` via ConfigFS, defining the Pi strictly as a USB HID Keyboard endpoint (`/dev/hidg0`). Ensure the OS is forced into a Read-Only state.
+    *   [ ] **Mode B (Sync):** If the switch is in Sync Mode, boot into Read-Write and mount a FAT32 partition via `libcomposite` as a USB Mass Storage device for `.kdbx` ingress.
     *   [ ] Disable all network interfaces (Wi-Fi, Ethernet overlays). If using a physical GPIO keypad, disable the Bluetooth stack entirely.
-    *   [ ] Configure DietPi to run a read-only filesystem to prevent SD card corruption during sudden power drops.
-    *   [ ] Set up a `tmpfs` (RAM disk) mount for the temporary extraction of the `.kdbx` file.
+    *   [ ] Set up a `tmpfs` (RAM disk) mount for the temporary extraction of the `.kdbx` file during Vault Mode operations.
 
 ### Phase 4: Core Vault Daemon (Pi-Side)
 **Objective:** Develop the secure python engine that runs on the Pi to handle decryption, listening, and keystroke injection.
@@ -66,6 +72,7 @@ To successfully build VaultWire, we will use a manual ID entry flow to maintain 
 *   **Tasks:**
     *   [ ] Implement the boot sequence: Wait for user to input the master password via the dedicated Pi keyboard, load the `.kdbx` file into `pykeepass` residing in `tmpfs`, and securely wipe the master password from variables.
     *   [ ] Create the HID mapping engine: Translate standard ASCII characters into raw USB HID keycode bytes to be written to `/dev/hidg0`. Include a randomized, configurable jitter/delay between keystrokes to simulate human typing and prevent dropped characters.
+    *   [ ] **Caps Lock Protection:** Integrate an HID macro to explicitly force the host's Caps Lock state off (or detect its state if supported by the USB protocol layer) prior to any payload injection.
     *   [ ] Build the Input Listener loop: Read physical keyboard inputs. When an `ID` command is entered, explicitly fetch the single entry via a strict `.get()` query. Implement a two-stage injection flow: First, inject the target URL and an 'Enter' keystroke. Then, enter a blocking wait state. Once the user hits 'Enter' again on the Pi keyboard, inject the login sequence (Username -> Tab -> Password -> Enter).
     *   [ ] Implement Rate-Limiting & Traps: Add a strict 30-second lockout between successful injections. Implement a Honey-Pot trigger that detects >3 requests in 30 seconds or sequential ID lookups (e.g., 41, 42, 43), immediately wiping RAM and forcing a reboot upon trigger.
     *   [ ] Implement the Sync Exporter: Read all entries, strip passwords, compile to JSON, compress via LZMA, encode to Base64, and send via the HID injection engine.
