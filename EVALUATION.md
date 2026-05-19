@@ -4,7 +4,7 @@
 
 ### 1. Security
 *   **Wireless Attack Surface (Bluetooth):** Relying on a Bluetooth keyboard introduces a significant wireless attack vector. Bluetooth traffic can be intercepted, or the Pi could be subjected to pairing attacks or vulnerabilities like BlueBorne.
-    *   *Mitigation:* Replace the Bluetooth keyboard with a hardwired physical keypad or a wired USB keyboard connected directly to the Pi via a USB OTG hub. This enforces a true physical air-gap.
+    *   *Mitigation:* For the current development version, the Bluetooth keyboard will remain in use. Replacing it with a hardwired physical keypad or wired USB keyboard to enforce a true physical air-gap is designated as a stretch goal.
 *   **USB Stack Enumeration Exploits:** While HID is unidirectional in application, the underlying USB protocol is bidirectional during device enumeration. A malicious host could attempt fuzzing the Pi's USB stack.
     *   *Mitigation:* Statically compile the HID gadget driver into the kernel and explicitly disable all other USB composite modules to minimize the attack surface.
 *   **Host-Side Keylogging:** The Pi ultimately types the decrypted passwords into the host system as plain text via HID. Malware or keyloggers on the host OS will capture these credentials.
@@ -81,7 +81,7 @@
 
 ### Phase 4: Core Vault Daemon (Pi-Side)
 **Objective:** Develop the core Python engine on the Pi for vault decryption, input listening, and secure HID injection.
-*   **Prerequisites:** `pykeepass`, knowledge of Linux HID keycodes, dedicated physical keyboard.
+*   **Prerequisites:** `pykeepass`, knowledge of Linux HID keycodes, Bluetooth keyboard (development).
 *   **Checklist:**
     *   [ ] Implement the boot sequence: Wait for master password via the Pi keyboard. Perform Cryptographic Header Validation (verify `0x03D9A29A` and `0x67FB4BB5`) before parsing.
     *   [ ] Build the HID mapping engine with configurable micro-delays between keystrokes to prevent dropping characters. Include Caps Lock override macros.
@@ -106,3 +106,7 @@
     *   [ ] **Physical Display Integration:** Wire the display to the Pi's GPIO pins to show system status ("Vault Locked", "Ready for ID") once the final form factor of the case is selected.
     *   [ ] **OTP Display:** Add functionality to parse TOTP tokens from the KeePass database and display them on the physical screen for manual entry.
     *   [ ] **Encrypted Boot:** Configure Full Disk Encryption (LUKS) to protect the underlying OS against physical tampering.
+    *   [ ] **Hardware Keypad:** Replace the development Bluetooth keyboard with a hardwired physical keypad or internal USB hub to establish a true physical air-gap.
+    *   [ ] **Software Updates:** Define a secure, air-gapped procedure for patching the OS and daemon software (e.g., exclusively flashing verified SD card images).
+    *   [ ] **Audit Logging:** Implement isolated, encrypted local logging or volatile `tmpfs` logging to aid debugging without persisting sensitive data.
+    *   [ ] **Host App Cross-Platform Support:** Expand the `curses`-based companion app to officially support Windows and macOS alongside Linux.
