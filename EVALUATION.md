@@ -4,7 +4,7 @@
 
 ### 1. Security
 *   **Wireless Attack Surface (Bluetooth):** Relying on a Bluetooth keyboard introduces a significant wireless attack vector. Bluetooth traffic can be intercepted, or the Pi could be subjected to pairing attacks or vulnerabilities like BlueBorne.
-    *   *Mitigation:* Replace the Bluetooth keyboard with a hardwired physical keypad or a wired USB keyboard connected directly to the Pi via a USB OTG hub. This enforces a true physical air-gap.
+    *   *Mitigation:* For the current development version, the Bluetooth keyboard will remain in use. Replacing it with a hardwired physical keypad or wired USB keyboard to enforce a true physical air-gap is designated as a stretch goal.
 *   **USB Stack Enumeration Exploits:** While HID is unidirectional in application, the underlying USB protocol is bidirectional during device enumeration. A malicious host could attempt fuzzing the Pi's USB stack.
     *   *Mitigation:* Statically compile the HID gadget driver into the kernel and explicitly disable all other USB composite modules to minimize the attack surface.
 *   **Host-Side Keylogging:** The Pi ultimately types the decrypted passwords into the host system as plain text via HID. Malware or keyloggers on the host OS will capture these credentials.
@@ -21,6 +21,10 @@
     *   *Mitigation:* Expose only a pre-allocated, flat image file (e.g., `vault.img`) rather than the actual OS partition.
 *   **Kernel-Level Execution Blocks:** Malware dropped into the `.kdbx` storage folder could be executed by the Python daemon.
     *   *Mitigation:* Mount the `vault.img` container internally using strict Linux kernel flags: `ro,noexec,nosuid,nodev`.
+*   **Physical Tampering (Evil Maid Attack):** An attacker with brief physical access could pull the SD card and replace the OS with a malicious image designed to silently log the master password or exfiltrate the `.kdbx` file over a hidden wireless interface.
+    *   *Mitigation:* Address physical security in the enclosure design (see `PHYSICAL_DESIGN.md`). Additionally, implementing an encrypted root filesystem (LUKS) should be considered a stretch goal to protect the underlying OS integrity against offline modifications.
+*   **Parser Vulnerabilities:** As `pykeepass` processes external files, it is theoretically vulnerable to memory exhaustion or logic flaws if a maliciously crafted `.kdbx` file is intentionally uploaded during Sync Mode.
+    *   *Mitigation:* Ensure `pykeepass` is strictly version-pinned and regularly audited. Include a security step to perform fuzzing on the vault parsing logic.
 
 ### 2. Best Practices
 *   **Dependency Management & Environments:** Relying on global system packages (`sudo apt install`) and global Python installations (`pip3 install`) can lead to dependency hell or conflicts.
@@ -29,6 +33,10 @@
     *   *Recommendation:* Create a dedicated unprivileged `vault_daemon` user. Use `udev` rules to grant this user write access strictly to `/dev/hidg0`.
 *   **Modular Architecture & Plugin Pattern:** The parser (`pykeepass`) and user interface logic are deeply coupled in the existing plan.
     *   *Recommendation:* Abstract the vault parsing logic into a modular plugin interface. This allows future expansion (e.g., parsing Bitwarden exports) without rewriting the core HID engine. Similarly, modularize the host app into distinct files for UI, storage, and sync logic.
+*   **State Feedback (Blind Operations):** Currently, entering the Master Password or Target IDs via the dedicated keyboard is completely "blind." If a user makes a typo or the system hangs, there is zero feedback.
+    *   *Recommendation:* Adding a physical screen (e.g., a simple OLED) provides essential state feedback. For this development version, it will remain a stretch goal until the final form factor of the case can be selected.
+*   **Vault Backup Strategy:** The architecture focuses on reading and updating the vault, but does not explicitly define a backup strategy. SD cards have high failure rates.
+    *   *Recommendation:* Define a secure backup procedure utilizing the Sync Mode Mass Storage container, allowing users to easily and safely copy the encrypted `.kdbx` file back to the host system for archiving.
 
 ### 3. Practical Applications & Feasibility
 *   **Typing Speed Limitations:** Blasting keystrokes via USB HID can lead to dropped characters due to host OS load or USB polling rates.
@@ -66,14 +74,14 @@
 *   **Prerequisites:** Raspberry Pi Zero 2 W, DietPi OS, physical GPIO slide switch, Micro-USB data cable.
 *   **Checklist:**
     *   [ ] Disable all network interfaces (Wi-Fi, Ethernet overlays, Bluetooth stack).
-    *   [ ] Wire the physical slide switch to a GPIO pin and implement the boot-time check script (`check_mode.sh`).
-    *   [ ] Configure Mode A (Vault): Initialize as HID Keyboard (`/dev/hidg0`). Mount the `vault.img` container with `ro,noexec,nosuid,nodev`. Set up `udev` rules for the unprivileged `vault_daemon` user.
-    *   [ ] Configure Mode B (Sync): Boot into read-write and expose `vault.img` via `libcomposite` as a USB Mass Storage device.
+    *   [ ] Implement a boot-time check script (`check_mode.sh`) to read a manual switch state. Early hardware will simply bridge a GPIO pin to enable Storage mode.
+    *   [ ] Configure Default Mode A (Vault / HID): If the switch is open or fails, default to this mode. Initialize as HID Keyboard (`/dev/hidg0`). Mount the `vault.img` container with `ro,noexec,nosuid,nodev`. Set up `udev` rules for the unprivileged `vault_daemon` user.
+    *   [ ] Configure Mode B (Sync / Mass Storage): If the GPIO pin is bridged, boot into read-write and expose `vault.img` via `libcomposite` as a USB Mass Storage device for database ingress. Document the procedure for users to back up their `.kdbx` file during this mode.
     *   [ ] Set up a `tmpfs` (RAM disk) mount and explicitly disable all OS swap space.
 
 ### Phase 4: Core Vault Daemon (Pi-Side)
 **Objective:** Develop the core Python engine on the Pi for vault decryption, input listening, and secure HID injection.
-*   **Prerequisites:** `pykeepass`, knowledge of Linux HID keycodes, dedicated physical keyboard.
+*   **Prerequisites:** `pykeepass`, knowledge of Linux HID keycodes, Bluetooth keyboard (development).
 *   **Checklist:**
     *   [ ] Implement the boot sequence: Wait for master password via the Pi keyboard. Perform Cryptographic Header Validation (verify `0x03D9A29A` and `0x67FB4BB5`) before parsing.
     *   [ ] Build the HID mapping engine with configurable micro-delays between keystrokes to prevent dropping characters. Include Caps Lock override macros.
@@ -93,7 +101,12 @@
 
 ### Phase 6: Stretch Goals (Hardware Expansions)
 **Objective:** Enhance the standalone physical capabilities and user experience of the Pi hardware.
-*   **Prerequisites:** Compatible E-Ink or OLED SPI display module.
+*   **Prerequisites:** Secondary hardware modules, compatible E-Ink or OLED SPI display module.
 *   **Checklist:**
-    *   [ ] **Physical Display Integration:** Wire the display to the Pi's GPIO pins to show system status ("Vault Locked", "Ready for ID").
+    *   [ ] **Physical Display Integration:** Wire the display to the Pi's GPIO pins to show system status ("Vault Locked", "Ready for ID") once the final form factor of the case is selected.
     *   [ ] **OTP Display:** Add functionality to parse TOTP tokens from the KeePass database and display them on the physical screen for manual entry.
+    *   [ ] **Encrypted Boot:** Configure Full Disk Encryption (LUKS) to protect the underlying OS against physical tampering.
+    *   [ ] **Hardware Keypad:** Replace the development Bluetooth keyboard with a hardwired physical keypad or internal USB hub to establish a true physical air-gap.
+    *   [ ] **Software Updates:** Define a secure, air-gapped procedure for patching the OS and daemon software (e.g., exclusively flashing verified SD card images).
+    *   [ ] **Audit Logging:** Implement isolated, encrypted local logging or volatile `tmpfs` logging to aid debugging without persisting sensitive data.
+    *   [ ] **Host App Cross-Platform Support:** Expand the `curses`-based companion app to officially support Windows and macOS alongside Linux.
