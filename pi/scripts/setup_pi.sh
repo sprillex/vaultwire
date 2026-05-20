@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Pi setup script for VaultWire daemon
+
+set -e
+
+echo "Updating system and installing Python prerequisites..."
+sudo apt-get update
+sudo apt-get install -y python3 python3-venv python3-dev build-essential libffi-dev libssl-dev
+
+echo "Initializing Python virtual environment..."
+cd "$(dirname "$0")/.."
+python3 -m venv .venv
+
+echo "Activating virtual environment and installing dependencies..."
+source .venv/bin/activate
+pip install --upgrade pip
+
+# Note: In a real Pi environment, we'd install wheels from the sync drive here if available
+pip install -r requirements.txt
+
+echo "Pi setup complete."
