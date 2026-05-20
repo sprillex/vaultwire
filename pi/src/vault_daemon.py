@@ -14,6 +14,7 @@ import base64
 import lzma
 import hmac
 import hashlib
+import logging
 from typing import Optional, Dict, Any, List
 
 # Try to import pykeepass, gracefully handle failure for offline linting/setup
@@ -22,13 +23,17 @@ try:
 except ImportError:
     PyKeePass = None
 
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
+
 # Configuration Constants
-KDBX_PATH = "/mnt/vault/vault.kdbx"
-HID_DEV = "/dev/hidg0"
-SYNC_SECRET_PATH = "/opt/vaultwire/sync.key" # External key for HMAC
-RATE_LIMIT_DELAY = 30  # Seconds between successful injections
-HONEYPOT_LIMIT = 3
-HONEYPOT_WINDOW = 30   # Seconds
+HID_DEV = os.environ.get("HID_DEV", "/dev/hidg0")
+KDBX_PATH = os.environ.get("KDBX_PATH", "/mnt/vault/vault.kdbx")
+RATE_LIMIT_DELAY = int(os.environ.get("RATE_LIMIT_DELAY", 30))
+HONEYPOT_LIMIT = int(os.environ.get("HONEYPOT_LIMIT", 3))
+HONEYPOT_WINDOW = int(os.environ.get("HONEYPOT_WINDOW", 30))
+SYNC_SECRET_PATH = os.environ.get("SYNC_SECRET_PATH", "/opt/vaultwire/sync.key")
 
 # Linux Keycodes Mapping (Abridged for typical password characters)
 KEY_CODES = {
@@ -51,16 +56,16 @@ SHIFT_CODES = {
 
 # --- Secure Memory Handling ---
 
-def lock_memory():
+def lock_memory() -> None:
     """Forces secure memory allocation using mlockall to prevent swapping."""
     try:
         libc = ctypes.CDLL("libc.so.6")
         # MCL_CURRENT = 1, MCL_FUTURE = 2
         result = libc.mlockall(3)
         if result != 0:
-            print("Warning: mlockall failed. Swap must be disabled natively.")
+            logger.warning("mlockall failed. Swap must be disabled natively.")
     except Exception as e:
-        print(f"Memory lock exception: {e}")
+        logger.error(f"Memory lock exception: {e}")
 
 def scrub_ram(obj: Any):
     """Explicitly overwrites variables in memory (best-effort in Python)."""
@@ -102,12 +107,20 @@ class SecurityMonitor:
 
         self.last_requested_id = target_id
 
-    def trigger_honeypot(self, reason: str):
+    def trigger_honeypot(self, reason: str) -> None:
         """Purges RAM and halts system upon detecting an attack."""
-        print(f"SECURITY VIOLATION: {reason}. Purging memory and halting.")
+        logger.critical(f"SECURITY VIOLATION: {reason}. Purging memory and halting.")
         # Attempt to overwrite any active memory here if we had direct C-struct access
         sys.stdout.flush()
-        os.system("echo b > /sysrq-trigger") # Force cold reboot if sysrq is enabled
+
+        # Try sysrq first
+        exit_code = os.system("echo b > /sysrq-trigger") # Force cold reboot if sysrq is enabled
+        if exit_code != 0:
+            # Fallback to standard reboot and then poweroff
+            logger.critical("sysrq failed, falling back to standard reboot/poweroff")
+            os.system("reboot -f")
+            os.system("poweroff -f")
+
         os._exit(1) # Immediate ungraceful exit bypassing standard teardown
 
 
@@ -130,10 +143,10 @@ def validate_kdbx_header(filepath: str) -> bool:
     except FileNotFoundError:
         return False
 
-def init_hid():
+def init_hid() -> None:
     """Validates HID interface is available."""
     if not os.path.exists(HID_DEV):
-         print(f"Error: {HID_DEV} not found. Is the gadget initialized?")
+         logger.error(f"{HID_DEV} not found. Is the gadget initialized?")
          sys.exit(1)
 
 def send_keystroke(keycode: int, shift: bool = False):
@@ -157,6 +170,10 @@ def send_keystroke(keycode: int, shift: bool = False):
     except IOError:
         pass
 
+# Load typing delays from environment variables
+MIN_TYPE_DELAY = float(os.environ.get("MIN_TYPE_DELAY", 0.005))
+MAX_TYPE_DELAY = float(os.environ.get("MAX_TYPE_DELAY", 0.015))
+
 def type_string(text: str):
     """Simulates typing with micro-delays and jitter."""
     for char in text:
@@ -171,12 +188,10 @@ def type_string(text: str):
         if keycode != 0:
             send_keystroke(keycode, shift)
             # Micro-delay to prevent dropped characters
-            time.sleep(random.uniform(0.005, 0.015))
+            time.sleep(random.uniform(MIN_TYPE_DELAY, MAX_TYPE_DELAY))
 
-def override_caps_lock():
-    """Forces caps lock off (Blind toggle, assuming standard initial state or via host script feedback)."""
-    # In a fully unidirectional setup without host feedback, we send the key twice
-    # or rely on the user to ensure it's off. As per plan, we send the macro.
+def override_caps_lock() -> None:
+    """Forces caps lock off (Blind toggle, assuming standard initial state)."""
     send_keystroke(KEY_CODES['CAPSLOCK'])
     time.sleep(0.05)
     send_keystroke(KEY_CODES['CAPSLOCK'])
@@ -211,9 +226,9 @@ def generate_sync_payload(kp: Any) -> str:
 
     return signature + b64_payload
 
-def listen_for_input(kp: Any, monitor: SecurityMonitor):
+def listen_for_input(kp: Any, monitor: SecurityMonitor) -> None:
     """Main loop awaiting manual input on the Pi's keyboard."""
-    print("Vault Open. Awaiting input ID or (S)ync command.")
+    logger.info("Vault Open. Awaiting input ID or (S)ync command.")
     while True:
         try:
             cmd = input("Command> ").strip()
@@ -224,7 +239,7 @@ def listen_for_input(kp: Any, monitor: SecurityMonitor):
 
             # Sync Mode Export
             if cmd.lower() == 's':
-                 print("Exporting sync layout...")
+                 logger.info("Exporting sync layout...")
                  payload = generate_sync_payload(kp)
                  # Wait for user to focus terminal
                  time.sleep(2)
@@ -238,17 +253,17 @@ def listen_for_input(kp: Any, monitor: SecurityMonitor):
                  monitor.register_request(target_id)
 
                  if not monitor.check_rate_limit():
-                     print(f"Rate limited. Please wait {RATE_LIMIT_DELAY}s.")
+                     logger.warning(f"Rate limited. Please wait {RATE_LIMIT_DELAY}s.")
                      continue
 
                  # Fetch strictly via index lookup to prevent looping
                  try:
                      entry = kp.entries[target_id - 1]
                  except IndexError:
-                     print("Invalid ID.")
+                     logger.error("Invalid ID.")
                      continue
 
-                 print(f"Injecting credentials for: {entry.title}")
+                 logger.info(f"Injecting credentials for: {entry.title}")
 
                  # Caps lock override
                  override_caps_lock()
@@ -257,7 +272,7 @@ def listen_for_input(kp: Any, monitor: SecurityMonitor):
                  if entry.url:
                      type_string(entry.url)
                      send_keystroke(KEY_CODES['ENTER'])
-                     print("URL Injected. Press ENTER on Pi to continue with credentials...")
+                     logger.info("URL Injected. Press ENTER on Pi to continue with credentials...")
                      input("Press ENTER> ")
 
                  # Stage 2: Username / Password
@@ -269,22 +284,22 @@ def listen_for_input(kp: Any, monitor: SecurityMonitor):
                  send_keystroke(KEY_CODES['ENTER'])
 
                  monitor.last_injection_time = time.time()
-                 print("Injection complete.")
+                 logger.info("Injection complete.")
 
         except KeyboardInterrupt:
-            print("Shutting down daemon...")
+            logger.info("Shutting down daemon...")
             sys.exit(0)
 
-def main():
+def main() -> None:
     lock_memory()
     init_hid()
 
-    if not PyKeePass:
-        print("pykeepass not installed. Halting daemon.")
+    if PyKeePass is None:
+        logger.error("pykeepass not installed. Halting daemon.")
         sys.exit(1)
 
     if not validate_kdbx_header(KDBX_PATH):
-        print(f"Invalid or missing vault file at {KDBX_PATH}")
+        logger.error(f"Invalid or missing vault file at {KDBX_PATH}")
         sys.exit(1)
 
     master_password = input("Enter Master Password: ").strip()
@@ -292,11 +307,11 @@ def main():
     try:
         # Load entirely into RAM
         kp = PyKeePass(KDBX_PATH, password=master_password)
-        print("Vault Unlocked Successfully.")
+        logger.info("Vault Unlocked Successfully.")
         # Clear master password reference
         del master_password
     except Exception as e:
-        print("Failed to unlock vault. Incorrect password or corrupted file.")
+        logger.error("Failed to unlock vault. Incorrect password or corrupted file.")
         sys.exit(1)
 
     monitor = SecurityMonitor()

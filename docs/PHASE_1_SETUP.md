@@ -52,6 +52,16 @@ python3 src/main.py --data-file ~/my_vault_index.json
 
 The Pi daemon requires specific hardware interaction libraries and the KeePass parser.
 
+### OS Hardening: Disabling Swap
+Because VaultWire decrypts vaults directly into RAM, it is critical to disable the OS swap file to prevent unencrypted password fragments from persisting on the SD card. Execute the following on the Pi:
+
+```bash
+sudo systemctl disable dphys-swapfile
+sudo dphys-swapfile swapoff
+sudo dphys-swapfile uninstall
+sudo rm /var/swap
+```
+
 ### Environment Initialization
 Run the Pi setup script to establish the virtual environment:
 
