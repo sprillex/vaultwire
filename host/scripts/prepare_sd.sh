@@ -171,6 +171,50 @@ GADGETSERVICE
 systemctl daemon-reload
 systemctl enable vaultwire-gadget.service
 
+# 6. Hello World Notification
+# Run the hid gadget initialization manually now so we can type
+/bin/bash /opt/vaultwire/pi/src/hid_gadget.sh >> /var/log/vaultwire_setup.log 2>&1
+# Wait a moment for the USB host to recognize the new gadget
+sleep 5
+
+# Type "Hello world" and hit Enter.
+# Using standard bash echo to /dev/hidg0.
+# The USB HID keyboard protocol requires 8 bytes per report.
+# Byte 0: Modifiers
+# Byte 1: Reserved
+# Byte 2-7: Keycodes
+
+# Helper function to send keystroke
+send_key() {
+    # Key down
+    echo -ne "\x00\x00\x$1\x00\x00\x00\x00\x00" > /dev/hidg0
+    # Key up
+    echo -ne "\x00\x00\x00\x00\x00\x00\x00\x00" > /dev/hidg0
+}
+
+# Helper function to send shifted keystroke (Shift is modifier 0x02)
+send_shift_key() {
+    # Shift down + key
+    echo -ne "\x02\x00\x$1\x00\x00\x00\x00\x00" > /dev/hidg0
+    # Key up
+    echo -ne "\x00\x00\x00\x00\x00\x00\x00\x00" > /dev/hidg0
+}
+
+if [ -c /dev/hidg0 ]; then
+    send_shift_key "0b" # H
+    send_key "08" # e
+    send_key "0f" # l
+    send_key "0f" # l
+    send_key "12" # o
+    send_key "2c" # space
+    send_key "1a" # w
+    send_key "12" # o
+    send_key "15" # r
+    send_key "0f" # l
+    send_key "07" # d
+    send_key "28" # Enter
+fi
+
 echo "VaultWire Offline Setup Complete." >> /var/log/vaultwire_setup.log
 BOOTSCRIPT
 

@@ -23,9 +23,12 @@ if [ "$1" == "--inside-docker" ]; then
 
     cd /out/debs
 
-    # Download the packages and their dependencies
+    # Download the packages and their dependencies gracefully
     for pkg in $PACKAGES; do
-        apt-get download $(apt-rdepends --state-follow=Installed,NotInstalled $pkg | grep -v "^ " | grep -v "^$") 2>/dev/null || true
+        DEPS=$(apt-rdepends --state-follow=Installed,NotInstalled $pkg | grep -v "^ " | grep -v "^$" 2>/dev/null || true)
+        for dep in $DEPS; do
+            apt-get download $dep 2>/dev/null || true
+        done
     done
 
     # Download packages directly to ensure we get at least the top level ones
