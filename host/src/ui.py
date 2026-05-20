@@ -25,7 +25,7 @@ def draw_main_menu(stdscr: curses.window, data_file: str) -> None:
         
         stdscr.addstr(3, 2, "👉 HOW TO USE:")
         stdscr.addstr(4, 4, "• Browse to find the service ID you want to log into.")
-        stdscr.addstr(5, 4, "• Manually type the ID into the Pi's Bluetooth keyboard to trigger injection.")
+        stdscr.addstr(5, 4, "• Manually type the ID into the Pi's Bluetooth keyboard (Development Phase) to trigger injection.")
         stdscr.addstr(6, 4, "• Press [S] to enter Sync Mode and import current service metadata from the Pi.")
         stdscr.addstr(7, 4, "• Press [Q] to quit safely.")
         stdscr.addstr(8, 2, "-" * (width - 4))

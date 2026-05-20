@@ -24,7 +24,7 @@ def sync_mode(stdscr: curses.window, data_file: str) -> Tuple[bool, str]:
 
     stdscr.clear()
     stdscr.addstr(1, 2, "=== SYNC MODE ACTIVE ===", curses.A_BOLD)
-    stdscr.addstr(3, 2, "1. Set focus to your Pi's Bluetooth keyboard.")
+    stdscr.addstr(3, 2, "1. Set focus to your Pi's Bluetooth keyboard (Development Phase).")
     stdscr.addstr(4, 2, "2. Trigger the 'Export Sync String' function on the Pi.")
     stdscr.addstr(5, 2, "   (The Pi will dump data here automatically).")
     stdscr.addstr(7, 2, "Paste or stream sync string below:")
