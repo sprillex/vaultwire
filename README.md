@@ -2,13 +2,14 @@
 
 VaultWire is an air-gapped, hardware-hardened credential injector built on a Raspberry Pi Zero 2 W. It acts as a dedicated, physical security accessory that unlocks an encrypted KeePass (`.kdbx`) database and injects passwords into a host computer by mimicking a standard USB Human Interface Device (HID) keyboard. 
 
-By utilizing an independent Bluetooth keyboard connected directly to the Pi and a stateless terminal companion app on the host computer, VaultWire keeps your raw cryptographic keys completely isolated from the target operating system. Communication is strictly one-way over a physical copper wire.
+By utilizing an independent Bluetooth keyboard (during this development phase) connected directly to the Pi and a stateless terminal companion app on the host computer, VaultWire keeps your raw cryptographic keys completely isolated from the target operating system. Communication is strictly one-way over a physical copper wire.
 
 ---
 
 ## 🏗️ System Architecture
 
              [ Bluetooth Keyboard ]
+          (Development Phase Only)
                        │
                 (Wireless Input)
                        ▼
@@ -37,7 +38,7 @@ By utilizing an independent Bluetooth keyboard connected directly to the Pi and 
 ## 🔒 Core Security & Operational Principles
 
 ### 1. Hard Air-Gap (No Network Footprint)
-The Raspberry Pi runs completely headless with Wi-Fi and Bluetooth networking stacks disabled (except for the dedicated BT keyboard, which is slated to be replaced by a physical keypad). It has no IP address, no web server, and no SSH daemon active. It interacts with the host PC *exclusively* as a wired USB keyboard device (`/dev/hidg0`).
+The Raspberry Pi runs completely headless with Wi-Fi and Bluetooth networking stacks disabled. *Note: In the current development phase, a dedicated BT keyboard is used, which is slated to be replaced by a physical keypad to achieve a true air-gap.* It has no IP address, no web server, and no SSH daemon active. It interacts with the host PC *exclusively* as a wired USB keyboard device (`/dev/hidg0`).
 
 ### 2. The Unidirectional "Echo Key" Protocol
 Because a standard USB keyboard cannot receive data back from a computer, VaultWire relies entirely on manual physical initiation:
@@ -57,7 +58,7 @@ The KeePass database is decrypted entirely inside the Pi's volatile RAM (`mlock`
 
 * **Microcontroller:** Raspberry Pi Zero 2 W.
 * **Operating System:** DietPi OS (Minimal base image, hardened).
-* **Input Peripherals:** Standard Bluetooth Keyboard (Paired exclusively to the Pi).
+* **Input Peripherals:** Standard Bluetooth Keyboard (Paired exclusively to the Pi) - Development Phase Only.
 * **Interconnect Cable:** High-quality Micro-USB to USB-A (or USB-C) data cable.
 
 ---
@@ -90,7 +91,7 @@ When you add, remove, or modify services inside your KeePass file, you can effor
 
 1. Press `[S]` inside the companion utility on your host PC to enter Sync Mode. The app will prompt you for an optional sync verification secret.
 2. After entering the secret, leave your host PC cursor focused in the companion app terminal.
-3. Type `s` and press Enter via your **Pi's keyboard** to execute the **Export Sync Layout** macro.
+3. Type `s` and press Enter via your **Pi's keyboard** to execute the **Export Sync Layout** macro (typing `s` and pressing enter tells the Pi daemon to start the export stream).
 4. The Pi compresses the updated structural data array (Titles, Usernames, IDs) using LZMA, signs it with an HMAC, wraps it in Base64, and simulates a fast-typing script to drop the stream directly into the terminal window.
 4. The companion utility instantly updates your local JSON layout map. **Passwords are strictly dropped during transmission.**
 

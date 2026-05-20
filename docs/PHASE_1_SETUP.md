@@ -84,7 +84,7 @@ Execute the build script in the `docker/` directory from your host machine (not 
 
 ```bash
 cd docker
-./build_wheels.sh
+docker build -t vaultwire-arm-builder .
 ```
 
-This script explicitly uses Docker buildx to emulate ARM64 architecture, builds the wheels listed in `pi/requirements.txt`, and outputs `.whl` files to a `docker/dist/` folder. These files can then be securely transferred to the Pi via Sync Mode and installed inside the Pi's `.venv` using `pip install *.whl`.
+The Dockerfile explicitly uses Docker buildx to emulate ARM architecture, builds the wheels listed in `pi/requirements.txt`, and uses `/build_wheels.sh` as its entrypoint. By running the container (e.g. `docker run -v $(pwd)/dist:/out_cache vaultwire-arm-builder`), the `.whl` files are output to a local `docker/dist/` folder. These files can then be securely transferred to the Pi and installed inside the Pi's `.venv` using `pip install *.whl`.
