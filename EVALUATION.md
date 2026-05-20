@@ -63,9 +63,9 @@
 
 ### Phase 2: Host Companion App Refactoring
 **Objective:** Modularize the host CLI utility and ensure it clearly facilitates manual ID entry and secure synchronization.
-*   **Prerequisites:** Python `curses`, existing `vault_manager.py`.
+*   **Prerequisites:** Python `curses`, existing `main.py`.
 *   **Checklist:**
-    *   [ ] Refactor `vault_manager.py` into distinct modules: `ui.py` (curses presentation), `storage.py` (JSON management), and `sync.py` (decoding/verification).
+    *   [ ] Refactor `main.py` into distinct modules: `ui.py` (curses presentation), `storage.py` (JSON management), and `sync.py` (decoding/verification).
     *   [ ] Implement HMAC signature verification in the sync decoder to guarantee layout integrity.
     *   [ ] Update the UI text to explicitly instruct the user to type the selected `ID` directly into the Pi's dedicated physical keyboard.
 

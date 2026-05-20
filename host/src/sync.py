@@ -2,6 +2,8 @@ import base64
 import lzma
 import json
 import curses
+import hmac
+import hashlib
 from typing import Tuple, List, Dict, Any
 from storage import save_local_data
 
@@ -11,6 +13,16 @@ def sync_mode(stdscr: curses.window, data_file: str) -> Tuple[bool, str]:
     stdscr.clear()
     height, width = stdscr.getmaxyx()
 
+    # First, prompt for the sync secret to verify HMAC
+    stdscr.addstr(1, 2, "=== SYNC MODE ACTIVE ===", curses.A_BOLD)
+    stdscr.addstr(3, 2, "Enter Sync Secret (leave blank to skip verification): ")
+    stdscr.refresh()
+    curses.noecho()
+    # Read up to 200 characters to avoid restrictive width bug
+    sync_secret = stdscr.getstr(3, 56, 200).decode('utf-8').strip()
+    curses.echo()
+
+    stdscr.clear()
     stdscr.addstr(1, 2, "=== SYNC MODE ACTIVE ===", curses.A_BOLD)
     stdscr.addstr(3, 2, "1. Set focus to your Pi's Bluetooth keyboard.")
     stdscr.addstr(4, 2, "2. Trigger the 'Export Sync String' function on the Pi.")
@@ -28,15 +40,38 @@ def sync_mode(stdscr: curses.window, data_file: str) -> Tuple[bool, str]:
             return False, "Sync cancelled (empty payload)."
 
         # Strip HMAC signature prefix if it exists
+        signature_present = False
+        received_signature = ""
+        payload_body = raw_stream
+
         if ":" in raw_stream:
             # Assumes format "signature:base64payload"
             parts = raw_stream.split(":", 1)
-            raw_stream = parts[1]
+            if len(parts) == 2:
+                received_signature = parts[0]
+                payload_body = parts[1]
+                signature_present = True
+            else:
+                 return False, "Sync Decode Error: Malformed signature prefix."
+
+        if sync_secret:
+             if not signature_present:
+                 return False, "Sync Decode Error: Payload is missing HMAC signature, but a secret was provided."
+
+             expected_mac = hmac.new(sync_secret.encode('utf-8'), payload_body.encode('utf-8'), hashlib.sha256).hexdigest()
+             if not hmac.compare_digest(expected_mac, received_signature):
+                 return False, "Sync Decode Error: HMAC signature verification failed."
+        elif signature_present:
+             pass # Secret was skipped but signature is present, we proceed.
 
         # Decode the structure safely in memory
-        compressed_data = base64.b64decode(raw_stream)
+        compressed_data = base64.b64decode(payload_body)
         decompressed_text = lzma.decompress(compressed_data).decode('utf-8')
-        new_vault_data = json.loads(decompressed_text)
+
+        try:
+            new_vault_data = json.loads(decompressed_text)
+        except json.JSONDecodeError as e:
+            return False, f"Sync Decode Error: Invalid JSON structure ({str(e)})."
 
         # Ensure it's a list
         if not isinstance(new_vault_data, list):

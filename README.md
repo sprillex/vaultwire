@@ -70,7 +70,10 @@ The KeePass database is decrypted entirely inside the Pi's volatile RAM (`mlock`
 3. Type the master password on the Pi's keyboard to unlock the embedded `.kdbx` file into RAM.
 
 ### Phase 2: Interacting with the Host Menu
-1. Open the **VaultWire Companion App** (`host/src/main.py`) manually in your terminal interface.
+1. Open the **VaultWire Companion App** manually in your terminal interface. You can optionally specify the path to your layout index:
+   ```bash
+   python3 host/src/main.py --data-file ~/my_vault_index.json
+   ```
 2. Use your PC's arrow keys to browse your local credential map.
 3. Highlight your target account and note the numeric ID.
 
@@ -85,9 +88,10 @@ The KeePass database is decrypted entirely inside the Pi's volatile RAM (`mlock`
 
 When you add, remove, or modify services inside your KeePass file, you can effortlessly synchronize the text-only layout mapping to your companion app without updating data files manually:
 
-1. Press `[S]` inside the companion utility to enter Sync Mode.
-2. Type `s` and press Enter via your Pi's keyboard to execute the **Export Sync Layout** macro.
-3. The Pi compresses the updated structural data array (Titles, Usernames, IDs) using LZMA, wraps it in Base64, and simulates a fast-typing script to drop the stream directly into the terminal window. 
+1. Press `[S]` inside the companion utility on your host PC to enter Sync Mode. The app will prompt you for an optional sync verification secret.
+2. After entering the secret, leave your host PC cursor focused in the companion app terminal.
+3. Type `s` and press Enter via your **Pi's keyboard** to execute the **Export Sync Layout** macro.
+4. The Pi compresses the updated structural data array (Titles, Usernames, IDs) using LZMA, signs it with an HMAC, wraps it in Base64, and simulates a fast-typing script to drop the stream directly into the terminal window.
 4. The companion utility instantly updates your local JSON layout map. **Passwords are strictly dropped during transmission.**
 
 ---
@@ -118,8 +122,8 @@ Bash
 # Initialize the virtual environment and install requirements
 ./host/scripts/setup_host.sh
 
-# Run the local layout visualizer
-python3 host/src/main.py
+# Run the local layout visualizer (defaults to ~/mint_vault_data.json)
+python3 host/src/main.py --data-file ~/my_vault_index.json
 
 Pi Side Prerequisites (DietPi OS)
 Bash
