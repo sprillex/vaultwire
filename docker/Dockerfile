@@ -1,4 +1,4 @@
-# Dockerfile to build ARM wheels for VaultWire Pi dependencies
+# Dockerfile to build ARM wheels and download DEB packages for VaultWire Pi dependencies
 FROM python:3.11-bullseye
 
 # Install build dependencies
@@ -8,19 +8,16 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     cargo \
     pkg-config \
+    apt-rdepends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
-# Copy requirements from the Pi directory and cache wheels using pip mount
+# Copy requirements from the Pi directory
 COPY pi/requirements.txt .
 
-# We use an entrypoint script to build the wheels and output them
+# We use an entrypoint script to build the wheels, download debs, and output them
 COPY docker/build_wheels.sh /build_wheels.sh
 RUN chmod +x /build_wheels.sh
-
-# Use Docker BuildKit cache mount to cache pip packages and wheels
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip wheel -r requirements.txt -w /out_cache || true
 
 ENTRYPOINT ["/build_wheels.sh"]

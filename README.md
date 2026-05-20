@@ -99,6 +99,8 @@ When you add, remove, or modify services inside your KeePass file, you can effor
 
 ## 🛠️ Installation & Repository Structure
 
+For a fully secure, air-gapped installation of the Pi daemon without requiring an internet connection on the device, please refer to the [Headless Offline Installation Guide](docs/HEADLESS_INSTALL.md).
+
 ```text
 ├── host/
 │   ├── src/
