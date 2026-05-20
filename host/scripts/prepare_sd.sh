@@ -61,6 +61,10 @@ if [ ! -b "$BOOT_PART" ] || [ ! -b "$ROOT_PART" ]; then
 fi
 
 # Step 3: Mount partitions
+
+echo ""
+read -p "Enter the MAC address of your Bluetooth Keyboard (e.g. 1A:2B:3C:4D:5E:6F) or leave blank to skip: " BT_MAC
+
 echo ""
 echo "Step 3: Mounting partitions..."
 MNT_BOOT=$(mktemp -d)
@@ -85,6 +89,11 @@ cp -r "$DIST_DIR/wheels" "$OFFLINE_DIR/"
 cp -r "$DIST_DIR/debs" "$OFFLINE_DIR/"
 
 # Step 5: Configure dietpi.txt
+
+if [ -n "$BT_MAC" ]; then
+    echo "$BT_MAC" > "$MNT_BOOT/bt_mac.txt"
+fi
+
 echo ""
 echo "Step 5: Configuring dietpi.txt for headless offline boot..."
 DIETPI_TXT="$MNT_BOOT/dietpi.txt"
@@ -170,6 +179,108 @@ GADGETSERVICE
 
 systemctl daemon-reload
 systemctl enable vaultwire-gadget.service
+
+# 6. Hello World Notification
+# Run the hid gadget initialization manually now so we can type
+/bin/bash /opt/vaultwire/pi/src/hid_gadget.sh >> /var/log/vaultwire_setup.log 2>&1
+# Wait a moment for the USB host to recognize the new gadget
+sleep 5
+
+# Type "Hello world" and hit Enter.
+# Using standard bash echo to /dev/hidg0.
+# The USB HID keyboard protocol requires 8 bytes per report.
+# Byte 0: Modifiers
+# Byte 1: Reserved
+# Byte 2-7: Keycodes
+
+# Helper function to send keystroke
+send_key() {
+    # Key down
+    echo -ne "\x00\x00\x$1\x00\x00\x00\x00\x00" > /dev/hidg0
+    # Key up
+    echo -ne "\x00\x00\x00\x00\x00\x00\x00\x00" > /dev/hidg0
+}
+
+# Helper function to send shifted keystroke (Shift is modifier 0x02)
+send_shift_key() {
+    # Shift down + key
+    echo -ne "\x02\x00\x$1\x00\x00\x00\x00\x00" > /dev/hidg0
+    # Key up
+    echo -ne "\x00\x00\x00\x00\x00\x00\x00\x00" > /dev/hidg0
+}
+
+if [ -c /dev/hidg0 ]; then
+    send_shift_key "0b" # H
+    send_key "08" # e
+    send_key "0f" # l
+    send_key "0f" # l
+    send_key "12" # o
+    send_key "2c" # space
+    send_key "1a" # w
+    send_key "12" # o
+    send_key "15" # r
+    send_key "0f" # l
+    send_key "07" # d
+    send_key "28" # Enter
+fi
+
+
+# 7. Bluetooth Auto-Pairing
+if [ -f /boot/bt_mac.txt ]; then
+    BT_MAC=$(cat /boot/bt_mac.txt)
+    echo "Setting up auto-pairing for Bluetooth MAC: $BT_MAC" >> /var/log/vaultwire_setup.log
+
+    # Create a pairing script
+    cat << 'BTSCRIPT' > /opt/vaultwire/bt_pair.sh
+#!/usr/bin/env bash
+MAC="$1"
+while true; do
+    # Ensure bluetooth is unblocked and powered on
+    rfkill unblock bluetooth
+    bluetoothctl power on
+    bluetoothctl agent KeyboardOnly
+    bluetoothctl default-agent
+    bluetoothctl scan on &
+    SCAN_PID=$!
+    sleep 5
+
+    # Try to pair, trust, and connect
+    bluetoothctl pair $MAC
+    bluetoothctl trust $MAC
+    bluetoothctl connect $MAC
+
+    kill $SCAN_PID 2>/dev/null || true
+
+    # Check if connected
+    if bluetoothctl info $MAC | grep -q "Connected: yes"; then
+        echo "Successfully paired to $MAC" >> /var/log/vaultwire_bt.log
+        break
+    fi
+    sleep 10
+done
+BTSCRIPT
+    chmod +x /opt/vaultwire/bt_pair.sh
+
+    # Setup a systemd service to run the pairing loop in the background,
+    # since we don't want to block the setup script.
+    cat << BTSERVICE > /etc/systemd/system/vaultwire-bt-pair.service
+[Unit]
+Description=VaultWire Bluetooth Auto-Pairing
+After=bluetooth.target
+
+[Service]
+ExecStart=/opt/vaultwire/bt_pair.sh "$BT_MAC"
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target
+BTSERVICE
+
+    systemctl daemon-reload
+    systemctl enable vaultwire-bt-pair.service
+    systemctl start vaultwire-bt-pair.service
+fi
 
 echo "VaultWire Offline Setup Complete." >> /var/log/vaultwire_setup.log
 BOOTSCRIPT
