@@ -1,71 +1,8 @@
-#!/usr/bin/env python3
-import os
-import sys
-import json
-import base64
-import lzma
 import curses
+from storage import load_local_data
+from sync import sync_mode
 
-# Set this path to a thumb drive or local folder
-DATA_FILE = os.path.expanduser("~/mint_vault_data.json")
-
-def load_local_data():
-    """Loads the vault skeleton from a local file or thumb drive."""
-    if not os.path.exists(DATA_FILE):
-        return []
-    try:
-        with open(DATA_FILE, 'r') as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-def save_local_data(data):
-    """Saves the local structural skeleton (No passwords)."""
-    try:
-        with open(DATA_FILE, 'w') as f:
-            json.dump(data, f, indent=4)
-        return True
-    except Exception:
-        return False
-
-def sync_mode(stdscr):
-    """Special mode to ingest new database structure via compressed strings."""
-    curses.echo() # Show characters as they are typed/streamed
-    stdscr.clear()
-    height, width = stdscr.getmaxyx()
-    
-    stdscr.addstr(1, 2, "=== SYNC MODE ACTIVE ===", curses.A_BOLD)
-    stdscr.addstr(3, 2, "1. Set focus to your Pi's Bluetooth keyboard.")
-    stdscr.addstr(4, 2, "2. Trigger the 'Export Sync String' function on the Pi.")
-    stdscr.addstr(5, 2, "   (The Pi will dump data here automatically).")
-    stdscr.addstr(7, 2, "Paste or stream sync string below:")
-    stdscr.addstr(8, 2, "> ")
-    stdscr.refresh()
-    
-    # Capture the stream from the Pi's HID automation
-    try:
-        raw_stream = stdscr.getstr(8, 4, width - 6).decode('utf-8').strip()
-        if not raw_stream:
-            return False, "Sync cancelled (empty payload)."
-            
-        # Decode the structure safely in memory
-        compressed_data = base64.b64decode(raw_stream)
-        decompressed_text = lzma.decompress(compressed_data).decode('utf-8')
-        new_vault_data = json.loads(decompressed_text)
-        
-        # Strip passwords out if they were accidentally included during export
-        for item in new_vault_data:
-            item.pop('password', None)
-            
-        if save_local_data(new_vault_data):
-            return True, f"Successfully synced {len(new_vault_data)} items!"
-        else:
-            return False, "Failed to write sync file to storage media."
-            
-    except Exception as e:
-        return False, f"Sync Decode Error: {str(e)}"
-
-def draw_main_menu(stdscr):
+def draw_main_menu(stdscr: curses.window, data_file: str) -> None:
     """Main application loop handling help instructions and navigation."""
     curses.curs_set(0)
     curses.noecho()
@@ -77,7 +14,7 @@ def draw_main_menu(stdscr):
     status_message = ""
     
     while True:
-        vault_data = load_local_data()
+        vault_data = load_local_data(data_file)
         stdscr.clear()
         height, width = stdscr.getmaxyx()
         
@@ -95,7 +32,11 @@ def draw_main_menu(stdscr):
         
         # 2. Render Status / Confirmation Bars
         if status_message:
-            stdscr.addstr(9, 2, f"ℹ️ {status_message}", curses.A_REVERSE)
+            # Handle status message wrapping if it's too long
+            display_msg = f"ℹ️ {status_message}"
+            if len(display_msg) > width - 4:
+                 display_msg = display_msg[:width - 7] + "..."
+            stdscr.addstr(9, 2, display_msg, curses.A_REVERSE)
             stdscr.addstr(10, 2, "-" * (width - 4))
         
         # 3. Dynamic Menu Data Generation
@@ -105,7 +46,11 @@ def draw_main_menu(stdscr):
             stdscr.addstr(data_start_y, 4, "[!] No local service index found. Press [S] to sync with your Pi.", curses.A_BLINK)
         else:
             for idx, item in enumerate(vault_data):
-                display_line = f" [{item['id']}] {item['title'].ljust(22)} | User: {item['username']}"
+                title = item.get('title', 'Unknown')
+                username = item.get('username', 'Unknown')
+                item_id = item.get('id', '?')
+
+                display_line = f" [{item_id}] {title.ljust(22)} | User: {username}"
                 if len(display_line) > width - 4:
                     display_line = display_line[:width - 7] + "..."
                 
@@ -132,21 +77,16 @@ def draw_main_menu(stdscr):
             current_row += 1
         elif key in [ord('s'), ord('S')]:
             # Temporarily exit main UI loop to handle standard string absorption
-            success, msg = sync_mode(stdscr)
+            success, msg = sync_mode(stdscr, data_file)
             status_message = msg
             current_row = 0
             curses.noecho()
             curses.curs_set(0)
         elif key in [10, 13, curses.KEY_ENTER] and vault_data:
             # Display target ID clearly for manual entry
-            selected = vault_data[current_row]
-            status_message = f"Selected ID is '{selected['id']}'. Type this on the Pi keyboard to inject!"
+            if current_row < len(vault_data):
+                 selected = vault_data[current_row]
+                 selected_id = selected.get('id', '?')
+                 status_message = f"Selected ID is '{selected_id}'. Type this on the Pi keyboard to inject!"
         elif key in [ord('q'), ord('Q'), 27]:
             break
-
-def main():
-    curses.wrapper(draw_main_menu)
-    print("\n[+] Companion app suspended cleanly. Storage state un-altered.")
-
-if __name__ == "__main__":
-    main()
