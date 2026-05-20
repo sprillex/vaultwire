@@ -91,7 +91,7 @@ When you add, remove, or modify services inside your KeePass file, you can effor
 
 1. Press `[S]` inside the companion utility on your host PC to enter Sync Mode. The app will prompt you for an optional sync verification secret.
 2. After entering the secret, leave your host PC cursor focused in the companion app terminal.
-3. Type `s` and press Enter via your **Pi's keyboard** to execute the **Export Sync Layout** macro.
+3. Type `s` and press Enter via your **Pi's keyboard** to execute the **Export Sync Layout** macro (typing `s` and pressing enter tells the Pi daemon to start the export stream).
 4. The Pi compresses the updated structural data array (Titles, Usernames, IDs) using LZMA, signs it with an HMAC, wraps it in Base64, and simulates a fast-typing script to drop the stream directly into the terminal window.
 4. The companion utility instantly updates your local JSON layout map. **Passwords are strictly dropped during transmission.**
 
